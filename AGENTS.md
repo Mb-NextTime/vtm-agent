@@ -18,7 +18,9 @@ src/vtm_agent/
     hunter.py      — Hunter (extends Person)
     vampire.py     — Vampire (extends Person, adds Hunger/Rouse Check/blood surge)
   env/
-    vtm_combat_env.py — Gymnasium Env for 1v1 combat (Hunter vs scripted Vampire)
+    action.py          — Action enum (ATTACK/EVADE/WILLPOWER_ATTACK/WILLPOWER_EVADE)
+    opponent.py        — Opponent protocol + ScriptedOpponent, RandomOpponent
+    vtm_combat_env.py  — Gymnasium Env for 1v1 combat (Hunter vs opponent)
 ```
 
 ## Engine details

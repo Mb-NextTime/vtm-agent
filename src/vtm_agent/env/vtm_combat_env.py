@@ -1,23 +1,16 @@
-from enum import IntEnum
-
 import numpy as np
 from gymnasium import Env, spaces
 
 from vtm_agent.engine import (
+    BarType,
+    BloodRageError,
     Damage,
     DamageType,
-    BarType,
     Hunter,
     Vampire,
-    BloodRageError,
 )
-
-
-class Action(IntEnum):
-    ATTACK = 0
-    EVADE = 1
-    WILLPOWER_ATTACK = 2
-    WILLPOWER_EVADE = 3
+from vtm_agent.env.action import Action
+from vtm_agent.env.opponent import Opponent, ScriptedOpponent
 
 
 class VTMCombatEnv(Env[np.ndarray, int]):
@@ -26,6 +19,7 @@ class VTMCombatEnv(Env[np.ndarray, int]):
     def __init__(
         self,
         render_mode: str | None = None,
+        opponent: Opponent | None = None,
         hunter_hp: int = 10,
         hunter_will: int = 10,
         hunter_attack: int = 6,
@@ -41,9 +35,17 @@ class VTMCombatEnv(Env[np.ndarray, int]):
     ) -> None:
         super().__init__()
         self.render_mode = render_mode
+        self._opponent = opponent if opponent is not None else ScriptedOpponent()
 
         self._hunter_params = (hunter_hp, hunter_will, hunter_attack, hunter_attack_mod, hunter_evasion)
-        self._vampire_params = (vampire_hp, vampire_will, vampire_attack, vampire_attack_mod, vampire_evasion, vampire_hunger)
+        self._vampire_params = (
+            vampire_hp,
+            vampire_will,
+            vampire_attack,
+            vampire_attack_mod,
+            vampire_evasion,
+            vampire_hunger,
+        )
         self.max_rounds = max_rounds
 
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
@@ -60,24 +62,25 @@ class VTMCombatEnv(Env[np.ndarray, int]):
     def _observe(self) -> np.ndarray:
         assert self.hunter is not None and self.vampire is not None
         h, v = self.hunter, self.vampire
-        return np.array([
-            (h.superficial_damage + h.aggravated_damage) / h.hp_cap,
-            (h.will_superficial_damage + h.will_aggravated_damage) / h.will_cap,
-            float(h.is_impaired),
-            (v.superficial_damage + v.aggravated_damage) / v.hp_cap,
-            (v.will_superficial_damage + v.will_aggravated_damage) / v.will_cap,
-            float(v.is_impaired),
-            v.hunger / 5.0,
-            self.round / self.max_rounds,
-        ], dtype=np.float32)
-
-    def _action_mask(self) -> np.ndarray:
-        assert self.hunter is not None
-        mask = np.ones(len(Action), dtype=np.int8)
-        will_filled = (
-            self.hunter.will_superficial_damage + self.hunter.will_aggravated_damage
-            >= self.hunter.will_cap
+        return np.array(
+            [
+                (h.superficial_damage + h.aggravated_damage) / h.hp_cap,
+                (h.will_superficial_damage + h.will_aggravated_damage) / h.will_cap,
+                float(h.is_impaired),
+                (v.superficial_damage + v.aggravated_damage) / v.hp_cap,
+                (v.will_superficial_damage + v.will_aggravated_damage) / v.will_cap,
+                float(v.is_impaired),
+                v.hunger / 5.0,
+                self.round / self.max_rounds,
+            ],
+            dtype=np.float32,
         )
+
+    def _action_mask(self, is_hunter: bool = True) -> np.ndarray:
+        person = self.hunter if is_hunter else self.vampire
+        assert person is not None
+        mask = np.ones(len(Action), dtype=np.int8)
+        will_filled = person.will_superficial_damage + person.will_aggravated_damage >= person.will_cap
         if will_filled:
             mask[Action.WILLPOWER_ATTACK] = 0
             mask[Action.WILLPOWER_EVADE] = 0
@@ -87,69 +90,82 @@ class VTMCombatEnv(Env[np.ndarray, int]):
     # Combat resolution
     # ------------------------------------------------------------------
 
-    def _resolve_attack(
-        self,
-        attacker: Hunter | Vampire,
-        defender: Hunter | Vampire,
-        willpower: bool,
-    ) -> float:
-        atk = attacker.roll(attacker.attack_pool)
+    def _resolve_stance(self, person: Hunter | Vampire, action: Action) -> tuple[int, bool]:
+        """Execute one side's stance and return (roll_successes, used_willpower)."""
+        if action in (Action.ATTACK, Action.WILLPOWER_ATTACK):
+            roll = person.roll(person.attack_pool)
+        else:
+            roll = person.roll(person.evasion_pool)
+
+        willpower = action in (Action.WILLPOWER_ATTACK, Action.WILLPOWER_EVADE)
         if willpower:
-            attacker.will_reroll(atk)
+            person.will_reroll(roll)
 
-        dfn = defender.roll(defender.evasion_pool)
+        return roll.successes, willpower
 
-        margin = atk.successes - dfn.successes
-        if margin <= 0:
-            return 0.0
+    def _resolve_round(
+        self,
+        h: Hunter,
+        v: Vampire,
+        agent_action: Action,
+        opp_action: Action,
+    ) -> float:
+        """Resolve a round where both sides pick a stance. Returns reward."""
+        agent_succ, _ = self._resolve_stance(h, agent_action)
+        opp_succ, _ = self._resolve_stance(v, opp_action)
 
-        dmg_type = DamageType.AGGRAVATED if margin >= 5 else DamageType.SUPERFICIAL
-        defender.apply_damage(Damage(margin, dmg_type, BarType.HP))
-        sign = -1.0 if isinstance(attacker, Vampire) else 1.0
-        return sign * float(margin) * 0.1
+        if agent_succ > opp_succ:
+            margin = agent_succ - opp_succ
+            dmg_type = DamageType.AGGRAVATED if margin >= 5 else DamageType.SUPERFICIAL
+            v.apply_damage(Damage(margin, dmg_type, BarType.HP))
+            return float(margin) * 0.1
+        elif opp_succ > agent_succ:
+            margin = opp_succ - agent_succ
+            dmg_type = DamageType.AGGRAVATED if margin >= 5 else DamageType.SUPERFICIAL
+            h.apply_damage(Damage(margin, dmg_type, BarType.HP))
+            return -float(margin) * 0.1
+        return 0.0
 
     # ------------------------------------------------------------------
     # Gymnasium interface
     # ------------------------------------------------------------------
 
-    def reset(self, *, seed: int | None = None, options: dict[str, object] | None = None) -> tuple[np.ndarray, dict[str, object]]:
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, object] | None = None
+    ) -> tuple[np.ndarray, dict[str, object]]:
         super().reset(seed=seed)
 
         hp = self._hunter_params
         self.hunter = Hunter(hp=hp[0], will=hp[1], attack_pool=hp[2], attack_modifier=hp[3], evasion_pool=hp[4])
         vp = self._vampire_params
         self.vampire = Vampire(
-            hp=vp[0], will=vp[1], attack_pool=vp[2], attack_modifier=vp[3], evasion_pool=vp[4], hunger=vp[5],
+            hp=vp[0],
+            will=vp[1],
+            attack_pool=vp[2],
+            attack_modifier=vp[3],
+            evasion_pool=vp[4],
+            hunger=vp[5],
         )
         self.round = 0
-        return self._observe(), {"action_mask": self._action_mask()}
+        return self._observe(), {"action_mask": self._action_mask(is_hunter=True)}
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
         assert self.hunter is not None and self.vampire is not None
         h, v = self.hunter, self.vampire
-        action = Action(action)
-        reward = 0.0
 
+        agent_action = Action(action)
+        opp_action = self._opponent.act(self._observe(), self._action_mask(is_hunter=False), h, v)
+
+        reward = 0.0
         try:
-            if action in (Action.ATTACK, Action.WILLPOWER_ATTACK):
-                will = action == Action.WILLPOWER_ATTACK
-                reward += self._resolve_attack(h, v, will)
-                if v.is_defeated:
-                    return self._observe(), 1.0, True, False, {"action_mask": self._action_mask()}
-                reward += self._resolve_attack(v, h, False)
-            else:
-                will = action == Action.WILLPOWER_EVADE
-                reward += self._resolve_attack(v, h, False)
-                if h.is_defeated:
-                    return self._observe(), -1.0, True, False, {"action_mask": self._action_mask()}
-                reward += self._resolve_attack(h, v, will)
+            reward += self._resolve_round(h, v, agent_action, opp_action)
         except BloodRageError:
-            return self._observe(), -1.0, True, False, {"action_mask": self._action_mask()}
+            return self._observe(), -1.0, True, False, {"action_mask": self._action_mask(is_hunter=True)}
 
         if v.is_defeated:
-            return self._observe(), 1.0, True, False, {"action_mask": self._action_mask()}
+            return self._observe(), 1.0, True, False, {"action_mask": self._action_mask(is_hunter=True)}
         if h.is_defeated:
-            return self._observe(), -1.0, True, False, {"action_mask": self._action_mask()}
+            return self._observe(), -1.0, True, False, {"action_mask": self._action_mask(is_hunter=True)}
 
         self.round += 1
         truncated = self.round >= self.max_rounds
@@ -157,7 +173,7 @@ class VTMCombatEnv(Env[np.ndarray, int]):
         if self.render_mode == "human":
             self._render()
 
-        return self._observe(), reward, False, truncated, {"action_mask": self._action_mask()}
+        return self._observe(), reward, False, truncated, {"action_mask": self._action_mask(is_hunter=True)}
 
     def _render(self) -> None:
         assert self.hunter is not None and self.vampire is not None
