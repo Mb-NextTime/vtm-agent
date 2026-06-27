@@ -35,7 +35,7 @@ class TestRandomOpponent:
         hunter = Hunter(hp=10, will=10, attack_pool=6, attack_modifier=0, evasion_pool=5)
         vampire = Vampire(hp=10, will=10, attack_pool=3, attack_modifier=0, evasion_pool=3, hunger=1)
         mask = np.ones(4, dtype=np.int8)
-        obs = np.zeros(8, dtype=np.float32)
+        obs = np.zeros(30, dtype=np.float32)
         action = opp.act(obs, mask, hunter, vampire, Phase.STANCE)
         assert isinstance(action, int)
 

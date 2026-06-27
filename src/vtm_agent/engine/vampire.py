@@ -21,8 +21,20 @@ class Vampire(Person):
         surge_modifier: int = 2,
     ) -> None:
         super().__init__(hp, will, attack_pool, attack_modifier, evasion_pool)
-        self.hunger = hunger
+        self._hunger = hunger
         self.surge_modifier = surge_modifier
+
+    @property
+    def is_vampire(self) -> bool:
+        return True
+
+    @property
+    def hunger(self) -> int:
+        return self._hunger
+
+    @hunger.setter
+    def hunger(self, value: int) -> None:
+        self._hunger = value
 
     def rouse_check(self) -> None:
         if random.randint(1, 10) < 6:

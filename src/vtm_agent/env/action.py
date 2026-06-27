@@ -12,5 +12,5 @@ class Stance(IntEnum):
 
 
 class WillpowerAction(IntEnum):
-    SKIP = 0
-    USE = 1
+    SKIP = 2
+    USE = 3

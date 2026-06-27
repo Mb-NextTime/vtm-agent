@@ -49,6 +49,14 @@ class Person:
     def is_defeated(self) -> bool:
         return self.aggravated_damage >= self.hp_cap or self.will_aggravated_damage >= self.will_cap
 
+    @property
+    def is_vampire(self) -> bool:
+        return False
+
+    @property
+    def hunger(self) -> int:
+        return 0
+
     def apply_damage(self, damage: Damage) -> None:
         val = damage.value
         if val <= 0:

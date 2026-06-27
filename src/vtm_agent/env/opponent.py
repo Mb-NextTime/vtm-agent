@@ -11,8 +11,8 @@ class Opponent(Protocol):
         self,
         obs: np.ndarray,
         action_mask: np.ndarray,
-        hunter: Hunter,
-        vampire: Vampire,
+        agent: Hunter | Vampire,
+        opponent: Hunter | Vampire,
         phase: Phase,
     ) -> int: ...
 
@@ -22,8 +22,8 @@ class ScriptedOpponent:
         self,
         obs: np.ndarray,
         action_mask: np.ndarray,
-        hunter: Hunter,
-        vampire: Vampire,
+        agent: Hunter | Vampire,
+        opponent: Hunter | Vampire,
         phase: Phase,
     ) -> int:
         if phase == Phase.STANCE:
@@ -39,8 +39,8 @@ class RandomOpponent:
         self,
         obs: np.ndarray,
         action_mask: np.ndarray,
-        hunter: Hunter,
-        vampire: Vampire,
+        agent: Hunter | Vampire,
+        opponent: Hunter | Vampire,
         phase: Phase,
     ) -> int:
         valid = [i for i, v in enumerate(action_mask) if v]

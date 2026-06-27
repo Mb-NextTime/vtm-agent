@@ -19,6 +19,16 @@ class Roll:
         critical_bonus = (tens // 2) * 2
         return base_successes + critical_bonus
 
+    @property
+    def common_successes(self) -> int:
+        """Dice >= 6 in common_pool (no critical bonus)."""
+        return sum(1 for die in self.common_pool if die >= 6)
+
+    @property
+    def blood_successes(self) -> int:
+        """Dice >= 6 in blood_pool (no critical bonus)."""
+        return sum(1 for die in self.blood_pool if die >= 6)
+
     def reroll(self, indices: list[int]) -> None:
         for i in indices:
             if i >= len(self.common_pool):
