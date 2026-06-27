@@ -37,7 +37,7 @@ class Person:
 
     @property
     def attack_pool(self) -> int:
-        pool = self.base_attack_pool - self.impare_penalty
+        pool = self.base_attack_pool + self.attack_modifier - self.impare_penalty
         return max(1, pool)
 
     @property
@@ -90,6 +90,8 @@ class Person:
     def roll(self, pool: int) -> Roll:
         return Roll(pool)
 
-    def will_reroll(self, roll: Roll, indices: list[int]) -> None:
-        roll.reroll(indices)
+    def will_reroll(self, roll: Roll) -> None:
+        if self.will_superficial_damage + self.will_aggravated_damage >= self.will_cap:
+            return
+        roll.reroll_failed(max_count=3)
         self.apply_damage(Damage(1, DamageType.SUPERFICIAL, BarType.WILL))

@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
-from vtm_agent.engine import BarType, Damage, DamageType, Vampire
+import pytest
+
+from vtm_agent.engine import BarType, BloodRageError, Damage, DamageType, Vampire
 
 
 class TestVampire:
@@ -35,3 +37,33 @@ class TestVampire:
             v = Vampire(hp=5, will=5, attack_pool=3, attack_modifier=0, evasion_pool=3, hunger=1)
             v.rouse_check()
         assert v.hunger == 2
+
+    def test_rouse_check_does_not_increase_hunger_on_success(self) -> None:
+        with patch("random.randint", return_value=10):
+            v = Vampire(hp=5, will=5, attack_pool=3, attack_modifier=0, evasion_pool=3, hunger=1)
+            v.rouse_check()
+        assert v.hunger == 1
+
+    def test_blood_surge_roll_increases_pool(self) -> None:
+        v = Vampire(hp=5, will=5, attack_pool=3, attack_modifier=0, evasion_pool=3, hunger=2)
+        with patch("random.randint", return_value=10):  # rouse check succeeds
+            r = v.blood_surge_roll(5)
+        assert len(r.common_pool) + len(r.blood_pool) == 5 + v.surge_modifier
+        assert v.hunger == 2  # hunger unchanged on success
+
+    def test_blood_surge_roll_calls_rouse_check(self) -> None:
+        v = Vampire(hp=5, will=5, attack_pool=3, attack_modifier=0, evasion_pool=3, hunger=4)
+        with patch("random.randint", return_value=1):  # rouse check fails
+            v.blood_surge_roll(5)
+        assert v.hunger == 5
+
+    def test_blood_rage_error_raised(self) -> None:
+        v = Vampire(hp=5, will=5, attack_pool=3, attack_modifier=0, evasion_pool=3, hunger=5)
+        with patch("random.randint", return_value=1):  # fails, hunger would exceed 5
+            with pytest.raises(BloodRageError):
+                v.rouse_check()
+        assert v.hunger == 5  # hunger not incremented on frenzy
+
+    def test_attack_modifier_works(self) -> None:
+        v = Vampire(hp=5, will=5, attack_pool=4, attack_modifier=1, evasion_pool=3, hunger=1)
+        assert v.attack_pool == 5

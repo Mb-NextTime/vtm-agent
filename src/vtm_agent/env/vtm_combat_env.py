@@ -95,8 +95,7 @@ class VTMCombatEnv(Env[np.ndarray, int]):
     ) -> float:
         atk = attacker.roll(attacker.attack_pool)
         if willpower:
-            sorted_idx = np.argsort(atk.common_pool)[:2].tolist()
-            attacker.will_reroll(atk, sorted_idx)
+            attacker.will_reroll(atk)
 
         dfn = defender.roll(defender.evasion_pool)
 

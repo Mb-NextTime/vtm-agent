@@ -21,10 +21,13 @@ src/vtm_agent/
     vtm_combat_env.py — Gymnasium Env for 1v1 combat (Hunter vs scripted Vampire)
 ```
 
-## Engine fixes
+## Engine details
 
-- `Person.is_impaired_will` was reading HP fields instead of will fields — fixed in `person.py:88`.
-- `BloodRageError` exception exists but has no handler (env catches it as defeat); vampire scripted opponent does not raise it (no rouse check called during env auto-play).
+- `Person.is_impaired_will` was reading HP fields instead of will fields — fixed (uses `will_superficial_damage`/`will_aggravated_damage`).
+- `attack_modifier` is now applied in `attack_pool` property (`base_attack_pool + attack_modifier - penalty`).
+- Willpower rerolls up to 3 non-success dice (values ≤5) via `Roll.reroll_failed(max_count=3)`.
+- `BloodRageError` exists; env catches it as defeat (vampire scripted opponent does not raise it).
+- Vampire superficial HP damage halved: `(value + 1) // 2`.
 - Old monolithic file `vtm_hunter_vs_vampire.py` kept for reference but superseded by `src/vtm_agent/engine/`.
 
 ## Development workflow

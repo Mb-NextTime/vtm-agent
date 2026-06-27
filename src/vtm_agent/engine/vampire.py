@@ -26,9 +26,9 @@ class Vampire(Person):
 
     def rouse_check(self) -> None:
         if random.randint(1, 10) < 6:
+            if self.hunger >= 5:
+                raise BloodRageError()
             self.hunger += 1
-        if self.hunger > 5:
-            raise BloodRageError()
 
     def roll(self, pool: int) -> Roll:
         return Roll(pool, self.hunger)

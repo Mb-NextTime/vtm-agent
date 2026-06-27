@@ -24,3 +24,7 @@ class Roll:
             if i >= len(self.common_pool):
                 raise IncorrectDataError(f"Reroll index ({i = }) out of range")
             self.common_pool[i] = random.randint(1, 10)
+
+    def reroll_failed(self, max_count: int = 3) -> None:
+        failed = [i for i, v in enumerate(self.common_pool) if v <= 5]
+        self.reroll(failed[:max_count])
