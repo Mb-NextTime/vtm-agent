@@ -1,8 +1,16 @@
 from enum import IntEnum
 
 
-class Action(IntEnum):
+class Phase(IntEnum):
+    STANCE = 0
+    WILLPOWER = 1
+
+
+class Stance(IntEnum):
     ATTACK = 0
     EVADE = 1
-    WILLPOWER_ATTACK = 2
-    WILLPOWER_EVADE = 3
+
+
+class WillpowerAction(IntEnum):
+    SKIP = 0
+    USE = 1

@@ -3,7 +3,7 @@ from typing import Protocol
 import numpy as np
 
 from vtm_agent.engine import Hunter, Vampire
-from vtm_agent.env.action import Action
+from vtm_agent.env.action import Phase, Stance, WillpowerAction
 
 
 class Opponent(Protocol):
@@ -13,7 +13,8 @@ class Opponent(Protocol):
         action_mask: np.ndarray,
         hunter: Hunter,
         vampire: Vampire,
-    ) -> Action: ...
+        phase: Phase,
+    ) -> int: ...
 
 
 class ScriptedOpponent:
@@ -23,8 +24,11 @@ class ScriptedOpponent:
         action_mask: np.ndarray,
         hunter: Hunter,
         vampire: Vampire,
-    ) -> Action:
-        return Action.ATTACK
+        phase: Phase,
+    ) -> int:
+        if phase == Phase.STANCE:
+            return int(Stance.ATTACK)
+        return int(WillpowerAction.SKIP)
 
 
 class RandomOpponent:
@@ -37,8 +41,9 @@ class RandomOpponent:
         action_mask: np.ndarray,
         hunter: Hunter,
         vampire: Vampire,
-    ) -> Action:
-        valid = [a for a in Action if action_mask[a]]
+        phase: Phase,
+    ) -> int:
+        valid = [i for i, v in enumerate(action_mask) if v]
         if not valid:
-            return Action.ATTACK
-        return Action(self._rng.choice(valid))
+            return 0
+        return int(self._rng.choice(valid))
