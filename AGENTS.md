@@ -11,7 +11,7 @@
 
 ```
 src/vtm_agent/
-  engine/          — V5 combat engine (refactored from vtm_hunter_vs_vampire.py)
+  engine/          — V5 combat engine
     damage.py      — Damage, DamageType, BarType
     dice.py        — Roll, IncorrectDataError
     person.py      — Person (base class with damage/will tracking, impairment, is_vampire, hunger)
@@ -30,7 +30,6 @@ src/vtm_agent/
 - Willpower rerolls up to 3 non-success dice (values ≤5) via `Roll.reroll_failed(max_count=3)`.
 - `BloodRageError` exists; env catches it as defeat (vampire scripted opponent does not raise it).
 - Vampire superficial HP damage halved: `(value + 1) // 2`.
-- Old monolithic file `vtm_hunter_vs_vampire.py` kept for reference but superseded by `src/vtm_agent/engine/`.
 - `Person.is_vampire` — `False` base, `True` in Vampire.
 - `Person.hunger` — `0` base, property in Vampire (backed by `_hunger`).
 
