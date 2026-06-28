@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 import numpy as np
@@ -5,7 +6,6 @@ from gymnasium import Env, spaces
 
 from vtm_agent.engine import (
     BarType,
-    BloodRageError,
     Damage,
     DamageType,
     Hunter,
@@ -15,6 +15,8 @@ from vtm_agent.engine import (
 )
 from vtm_agent.env.action import Phase, Stance, WillpowerAction
 from vtm_agent.env.opponent import Opponent, ScriptedOpponent
+
+logger = logging.getLogger(__name__)
 
 MAX_POOL = 30
 MAX_STAT = 30
@@ -130,7 +132,7 @@ class VTMCombatEnv(Env[ObsType, int]):
         ]
         return np.array(agent + opp + context, dtype=np.float32)
 
-    def _action_mask(self) -> np.ndarray:
+    def action_mask(self) -> np.ndarray:
         assert self._agent_person is not None
         if self._phase == Phase.STANCE:
             return np.array([1, 1, 0, 0], dtype=np.int8)
@@ -196,14 +198,15 @@ class VTMCombatEnv(Env[ObsType, int]):
 
         self.round = 0
         self._reset_round_state()
-        return self._observe(), {"action_mask": self._action_mask()}
+        return self._observe(), {"action_mask": self.action_mask()}
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
         assert self._agent_person is not None and self._opponent_person is not None
 
         action = int(action)
-        mask = self._action_mask()
+        mask = self.action_mask()
         if not mask[action]:
+            logger.warning("Invalid action %d in phase %s, falling back to %d", action, self._phase, int(mask.argmax()))
             action = int(mask.argmax())
 
         if self._phase == Phase.STANCE:
@@ -218,11 +221,7 @@ class VTMCombatEnv(Env[ObsType, int]):
         pool = p.attack_pool if self._agent_stance == Stance.ATTACK else p.evasion_pool
         self._agent_roll = p.roll(pool)
 
-        try:
-            self._opponent_successes = self._resolve_opponent()
-        except BloodRageError:
-            self._reset_round_state()
-            return self._observe(), -1.0, True, False, {"action_mask": self._action_mask()}
+        self._opponent_successes = self._resolve_opponent()
 
         self._phase = Phase.WILLPOWER
         return (
@@ -230,7 +229,7 @@ class VTMCombatEnv(Env[ObsType, int]):
             0.0,
             False,
             False,
-            {"action_mask": self._action_mask()},
+            {"action_mask": self.action_mask()},
         )
 
     def _step_willpower(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
@@ -252,10 +251,10 @@ class VTMCombatEnv(Env[ObsType, int]):
 
         if self._opponent_person.is_defeated:
             self._reset_round_state()
-            return self._observe(), 1.0, True, False, {"action_mask": self._action_mask()}
+            return self._observe(), 1.0, True, False, {"action_mask": self.action_mask()}
         if self._agent_person.is_defeated:
             self._reset_round_state()
-            return self._observe(), -1.0, True, False, {"action_mask": self._action_mask()}
+            return self._observe(), -1.0, True, False, {"action_mask": self.action_mask()}
 
         self.round += 1
         truncated = self.round >= self.max_rounds
@@ -264,7 +263,7 @@ class VTMCombatEnv(Env[ObsType, int]):
         if self.render_mode == "human":
             self._render()
 
-        return self._observe(), reward, False, truncated, {"action_mask": self._action_mask()}
+        return self._observe(), reward, False, truncated, {"action_mask": self.action_mask()}
 
     def _render(self) -> None:
         assert self._agent_person is not None and self._opponent_person is not None
