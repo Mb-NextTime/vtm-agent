@@ -80,6 +80,7 @@ class VTMCombatEnv(Env[ObsType, int]):
         self._opponent_config = opponent_config or CharacterConfig(is_vampire=True)
         self.max_rounds = max_rounds
         self.randomize_roles = randomize_roles
+        self._last_round_result: dict[str, object] | None = None
 
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(OBS_DIM,), dtype=np.float32)
         self.action_space = spaces.Discrete(4)
@@ -91,6 +92,30 @@ class VTMCombatEnv(Env[ObsType, int]):
         self._agent_stance: Stance | None = None
         self._agent_roll: Roll | None = None
         self._opponent_successes: int | None = None
+
+    # ------------------------------------------------------------------
+    # Public API properties
+    # ------------------------------------------------------------------
+
+    @property
+    def agent_person(self) -> Hunter | Vampire | None:
+        return self._agent_person
+
+    @property
+    def opponent_person(self) -> Hunter | Vampire | None:
+        return self._opponent_person
+
+    @property
+    def agent_defeated(self) -> bool:
+        return self._agent_person is not None and self._agent_person.is_defeated
+
+    @property
+    def opponent_defeated(self) -> bool:
+        return self._opponent_person is not None and self._opponent_person.is_defeated
+
+    @property
+    def last_round_result(self) -> dict[str, object] | None:
+        return self._last_round_result
 
     # ------------------------------------------------------------------
     # Character factory
@@ -224,12 +249,20 @@ class VTMCombatEnv(Env[ObsType, int]):
         self._opponent_successes = self._resolve_opponent()
 
         self._phase = Phase.WILLPOWER
+        stance_info: dict[str, object] = {
+            "action_mask": self.action_mask(),
+            "round_result": {
+                "agent_successes": self._agent_roll.successes,
+                "opponent_successes": self._opponent_successes,
+                "agent_used_willpower": False,
+            },
+        }
         return (
             self._observe(pre_will_roll=self._agent_roll),
             0.0,
             False,
             False,
-            {"action_mask": self.action_mask()},
+            stance_info,
         )
 
     def _step_willpower(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, object]]:
@@ -243,6 +276,13 @@ class VTMCombatEnv(Env[ObsType, int]):
         agent_succ = self._agent_roll.successes
         opp_succ = self._opponent_successes
 
+        self._last_round_result = {
+            "agent_successes": agent_succ,
+            "opponent_successes": opp_succ,
+            "margin": agent_succ - opp_succ,
+            "agent_used_willpower": wp == WillpowerAction.USE,
+        }
+
         reward = 0.0
         if agent_succ > opp_succ:
             reward += self._resolve_damage(agent_succ - opp_succ, self._opponent_person)
@@ -251,19 +291,33 @@ class VTMCombatEnv(Env[ObsType, int]):
 
         if self._opponent_person.is_defeated:
             self._reset_round_state()
-            return self._observe(), 1.0, True, False, {"action_mask": self.action_mask()}
+            return (
+                self._observe(),
+                1.0,
+                True,
+                False,
+                {"action_mask": self.action_mask(), "round_result": self._last_round_result},
+            )
         if self._agent_person.is_defeated:
             self._reset_round_state()
-            return self._observe(), -1.0, True, False, {"action_mask": self.action_mask()}
+            return (
+                self._observe(),
+                -1.0,
+                True,
+                False,
+                {"action_mask": self.action_mask(), "round_result": self._last_round_result},
+            )
 
         self.round += 1
         truncated = self.round >= self.max_rounds
         self._reset_round_state()
 
+        info: dict[str, object] = {"action_mask": self.action_mask(), "round_result": self._last_round_result}
+
         if self.render_mode == "human":
             self._render()
 
-        return self._observe(), reward, False, truncated, {"action_mask": self.action_mask()}
+        return self._observe(), reward, False, truncated, info
 
     def _render(self) -> None:
         assert self._agent_person is not None and self._opponent_person is not None
